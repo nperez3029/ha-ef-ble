@@ -33,6 +33,12 @@ class Device(DeviceBase, ProtobufProps):
     SN_PREFIX = b"Y711"
     NAME_PREFIX = "EF-YJ"
 
+    # Switch states (no known state report yet, updated optimistically on successful command send)
+    dc_12v_port: bool | None = None
+    ac_ports: bool | None = None
+    ac_always_on: bool | None = None
+    battery_preconditioning: bool | None = None
+
     battery_level = pb_field(pb_heartbeat.soc)
 
     lv_solar_power = pb_field(pb_heartbeat.in_lv_mppt_pwr, lambda x: round(x, 2))
@@ -116,3 +122,66 @@ class Device(DeviceBase, ProtobufProps):
             self.update_callback(prop_name)
 
         return processed
+
+    async def enable_dc_12v_port(self, enabled: bool) -> bool:
+        """Enable/disable the DC 12V port.
+
+        Verified from Frida capture (DPU BLE, Packet v19):
+          dst=0x02, cmdSet=0x02, cmdId=0x44
+          ON  payload: 08 01
+          OFF payload: <empty>
+        """
+        payload = b"\x08\x01" if enabled else b""
+        packet = Packet(0x21, 0x02, 0x02, 0x44, payload, version=19)
+        await self._conn.sendPacket(packet)
+        self.update_state("dc_12v_port", enabled)
+        return True
+
+    async def enable_ac_ports(self, enabled: bool) -> bool:
+        """Enable/disable AC output ports.
+
+        Verified from Frida capture (DPU BLE, Packet v19):
+          dst=0x02, cmdSet=0x02, cmdId=0x48
+          ON  payload: 08 01
+          OFF payload: 08 00
+        """
+        payload = b"\x08\x01" if enabled else b"\x08\x00"
+        packet = Packet(0x21, 0x02, 0x02, 0x48, payload, version=19)
+        await self._conn.sendPacket(packet)
+        self.update_state("ac_ports", enabled)
+        return True
+
+    async def enable_battery_preconditioning(self, enabled: bool) -> bool:
+        """Enable/disable Battery Preconditioning (BP heat).
+
+        Verified from Frida capture (DPU BLE, Packet v19):
+          dst=0x02, cmdSet=0x02, cmdId=0x59
+          ON  payload: 08 01  (BpHeatSet.en_bp_heat=1)
+          OFF payload: <empty> (default value omits field)
+        """
+        msg = yj751_sys_pb2.BpHeatSet(en_bp_heat=1 if enabled else 0)
+        payload = msg.SerializeToString()
+        packet = Packet(0x21, 0x02, 0x02, 0x59, payload, version=19)
+        await self._conn.sendPacket(packet)
+        self.update_state("battery_preconditioning", enabled)
+        return True
+
+    async def enable_ac_always_on(self, enabled: bool) -> bool:
+        """Enable/disable AC Always On.
+
+        Verified from Frida capture (DPU BLE, Packet v19):
+          dst=0x02, cmdSet=0x02, cmdId=0x5D
+          ON  payload: 08 01 10 0A  (AcOftenOpenCfg.ac_often_open=1, min_soc=10)
+          OFF payload: 10 0A        (AcOftenOpenCfg.min_soc=10)
+        """
+        msg = yj751_sys_pb2.AcOftenOpenCfg(
+            ac_often_open=1 if enabled else 0,
+            ac_often_open_min_soc=10,
+        )
+        payload = msg.SerializeToString()
+        packet = Packet(0x21, 0x02, 0x02, 0x5D, payload, version=19)
+        await self._conn.sendPacket(packet)
+        self.update_state("ac_always_on", enabled)
+        return True
+
+

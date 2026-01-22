@@ -6,6 +6,7 @@ from homeassistant.components.switch import (
     SwitchEntityDescription,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import DeviceConfigEntry
@@ -13,6 +14,13 @@ from .eflib import DeviceBase
 from .entity import EcoflowEntity
 
 SWITCH_TYPES = [
+    SwitchEntityDescription(
+        key="battery_preconditioning",
+        name="Battery Preconditioning",
+        icon="mdi:heat-wave",
+        entity_category=EntityCategory.CONFIG,
+    ),
+
     SwitchEntityDescription(
         key="dc_12v_port",
         name="DC 12V Port",
